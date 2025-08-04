@@ -6,6 +6,7 @@ import com.sc.common.InputHandler;
 import com.sc.common.RequestMsg;
 import com.sc.common.ResponseMsg;
 import com.sc.entity.ExamRecord;
+import com.sc.entity.Student;
 
 import java.io.*;
 import java.net.Socket;
@@ -25,59 +26,134 @@ public class StudentClient implements Client ,Runnable{
 
     private Thread examListenerThread;
     private boolean isExamming = false;
+    // 同时优化create_menu方法中的异常处理
     @Override
     public void create_menu() throws IOException, ClassNotFoundException {
         while (true) {
-            System.out.println("欢迎来到学生端");
-            System.out.println("1.开始考试");
-            System.out.println("2.交卷");
-            System.out.println("3.查看成绩");
-            System.out.println("4.返回上一级");
-            int num = handler.getIntInput("请输入命令：");
-            switch (num){
-                case 1:{
-                    beginExam();
-                    break;
+            try {
+                System.out.println("\n欢迎来到学生端");
+                System.out.println("1.开始考试");
+                System.out.println("2.交卷");
+                System.out.println("3.查看成绩");
+                System.out.println("4.返回上一级");
+                int num = handler.getIntInput("请输入命令：");
+                switch (num){
+                    case 1:{
+                        beginExam();
+                        break;
+                    }
+                    case 2:{
+                        submitPaper();
+                        break;
+                    }
+                    case 3:{
+                        getScore();
+                        break;
+                    }
+                    case 4:{
+                        return;
+                    }
+                    default:
+                        printFancyMessage("请输入有效的命令编号(1-4)", "info");
                 }
-                case 2:{
-                    submitPaper();
-                    break;
-                }
-                case 3:{
-                    getScore();
-                    break;
-                }
-                case 4:{
-                    return;
-                }
+            } catch (Exception e) {
+                printFancyMessage("操作出错: " + e.getMessage(), "error");
+                // 保留原始异常堆栈用于调试
+                e.printStackTrace();
             }
         }
     }
 
     private void getScore() throws IOException, ClassNotFoundException {
-        System.out.println("正在查询成绩...");
         sendMsg(new RequestMsg(Constants.STUDENT_GET_SCORE, student));
         ResponseMsg responseMsg = receiveMsg();
-        if (responseMsg.getCode() == 200) {
+
+        if (responseMsg != null && responseMsg.getCode() == 200) {
             ExamRecord record = (ExamRecord) responseMsg.getData();
-            System.out.println("查询成功！" );
-            System.out.println("考试成绩：" + record.getScore());
+            if (record == null) {
+                printFancyMessage("未找到考试记录", "info");
+                return;
+            }
+
+            // 未提交试卷
+            if (!record.isSubmit_status()) {
+                printFancyMessage("尚未提交试卷，无法查询成绩", "info");
+                return;
+            }
+
+            // 已提交但未批改
+            if (!record.isGraded()) {
+                printFancyMessage("试卷已提交，等待教师批改中...", "info");
+                return;
+            }
+
+            // 已批改，显示成绩
+            String message = String.format(
+                    "考试成绩：\n姓名：%s\n学号：%s\n提交时间：%s\n成绩：%.1f分",
+                    student.getName(), student.getId_card(),
+                    record.getSubmit_time(), record.getScore()
+            );
+            printFancyMessage(message, "success");
+        } else if (responseMsg != null && responseMsg.getCode() == 500) {
+            printFancyMessage("查询成绩失败：" + responseMsg.getMessage(), "error");
         } else {
-            System.out.println("查询失败：" + responseMsg.getMessage());
+            printFancyMessage("服务器响应异常", "error");
         }
     }
 
-    private void submitPaper() throws IOException {
+
+    private void submitPaper() throws IOException, InterruptedException {
         // 检查是否在考试中
         if (!isExamming) {
             System.out.println("当前不在考试中，无法提交试卷");
             return;
         }
 
-        // 构建答案文件路径（使用学生唯一标识确保文件正确）
+        // 1. 生成文件名（保持不变）
         String answerFileName = student.getName() + "_" + student.getId_card() + ".txt";
-        File answerFile = new File(Constants.answer_path, answerFileName);
 
+        // 2. 关键：每次检查前重新构建File对象，避免缓存旧状态
+        File answerFile = new File(Constants.answer_path, answerFileName);
+        System.out.println("检查的文件路径：" + answerFile.getAbsolutePath());
+
+        // 3. 添加重试机制，给用户时间创建文件，并每次重新检查
+        int maxRetries = 3;
+        int retryCount = 0;
+        boolean fileValid = false;
+
+        while (retryCount < maxRetries) {
+            // 每次循环都重新创建File对象，确保状态最新
+            answerFile = new File(Constants.answer_path, answerFileName);
+
+            // 检查文件是否存在
+            if (!answerFile.exists()) {
+                System.out.println("第" + (retryCount + 1) + "次检查：文件不存在，请创建文件");
+            }
+            // 检查文件是否为空（使用length()判断，避免缓存）
+            else if (answerFile.length() == 0) {
+                System.out.println("第" + (retryCount + 1) + "次检查：文件为空，请写入内容");
+            }
+            // 检查是否有读取权限
+            else if (!answerFile.canRead()) {
+                System.out.println("第" + (retryCount + 1) + "次检查：无读取权限");
+            } else {
+                // 文件状态正常
+                fileValid = true;
+                break;
+            }
+
+            // 等待3秒后重试（给用户操作时间）
+            retryCount++;
+            if (retryCount < maxRetries) {
+                System.out.println("3秒后重试...（剩余" + (maxRetries - retryCount) + "次）");
+                Thread.sleep(3000);
+            }
+        }
+
+        if (!fileValid) {
+            System.out.println("文件检查失败，无法提交");
+            return;
+        }
         // 检查答案文件是否存在
         if (!answerFile.exists() || answerFile.length() == 0) {
             System.out.println("答案文件不存在或为空，请确认文件路径：" + answerFile.getAbsolutePath());
@@ -164,6 +240,13 @@ public class StudentClient implements Client ,Runnable{
     }
 
     private void processExamStart(ResponseMsg responseMsg) {
+        // 添加类型检查
+        Object data = responseMsg.getData();
+        if (!(data instanceof Map)) {
+            System.out.println("服务器返回数据格式错误，期望Map类型，实际收到: " +
+                    (data != null ? data.getClass().getName() : "null"));
+            return;
+        }
         Map<String, Object> examData = (Map<String, Object>) responseMsg.getData();
         String paperContent = (String) examData.get("paperContent");
         Long startTime = (Long) examData.get("startTime");
@@ -217,42 +300,59 @@ public class StudentClient implements Client ,Runnable{
             try {
                 while (!Thread.currentThread().isInterrupted()) {
                     if (socket == null || socket.isClosed()) {
-                        System.out.println("连接已断开，停止监听考试消息");
+                        printFancyMessage("连接已断开，停止监听考试消息", "info");
                         break;
                     }
 
                     try {
                         ResponseMsg responseMsg = receiveMsg(0);
-                        if (responseMsg != null) {
-                            handleExamMessage(responseMsg);
-                        } else {
-                            System.out.println("服务器连接已关闭");
+                        // 若读取到null，说明服务器主动关闭连接
+                        if (responseMsg == null) {
+                            printFancyMessage("服务器已关闭连接", "info");
                             break;
                         }
+                        handleExamMessage(responseMsg);
                     } catch (SocketTimeoutException e) {
-                        continue;
+                        System.out.println("已经超时");
+                        continue; // 超时不处理，继续监听
+                    } catch (EOFException e) {
+                        // 捕获“流结束”异常（连接正常关闭），不提示错误
+                        printFancyMessage("连接已正常关闭", "info");
+                        break;
                     } catch (StreamCorruptedException | OptionalDataException e) {
-                        System.out.println("数据读取异常: " + e.getMessage());
+                        // 仅在调试时输出，生产环境可忽略或重新连接
+
+                        break;
+                    } catch (IOException | ClassNotFoundException e) {
+                        System.err.println("其他通信错误：" + e.getMessage());
                         break;
                     }
                 }
-            } catch (IOException e) {
-                if (!Thread.currentThread().isInterrupted()) {
-                    System.out.println("监听考试消息时发生网络异常: " + e.getMessage());
-                }
-            } catch (ClassNotFoundException e) {
-                System.out.println("监听考试消息时发生类解析异常: " + e.getMessage());
-            } catch (Exception e) {
-                if (!Thread.currentThread().isInterrupted()) {
-                    System.out.println("监听考试消息时发生未知异常: " + e.getMessage());
-                }
             } finally {
-                System.out.println("考试监听已停止");
+                // 仅在正常关闭时提示，异常关闭不提示
+                if (!Thread.currentThread().isInterrupted()) {
+                    printFancyMessage("考试监听已停止", "info");
+                }
             }
         });
-
         examListenerThread.setDaemon(true);
         examListenerThread.start();
+    }
+
+    // 添加一个美化消息输出的工具方法
+    private void printFancyMessage(String message, String type) {
+        String line = "======================================";
+        String prefix = "【信息】";
+
+        if ("error".equals(type)) {
+            prefix = "【错误】";
+        } else if ("success".equals(type)) {
+            prefix = "【成功】";
+        }
+
+        System.out.println("\n" + line);
+        System.out.println(prefix + " " + message);
+        System.out.println(line + "\n");
     }
     private void handleExamMessage(ResponseMsg responseMsg) {
         switch (responseMsg.getCode()) {
@@ -265,7 +365,6 @@ public class StudentClient implements Client ,Runnable{
                 System.out.println("\n=== 考试结束 ===");
                 System.out.println(responseMsg.getData());
                 System.out.println("===============");
-                isExamming = false;
                 return;
             default:
                 System.out.println("收到未知消息: " + responseMsg.getMessage());

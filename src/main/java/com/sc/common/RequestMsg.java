@@ -16,6 +16,10 @@ public class RequestMsg implements Serializable {
         this.cmd = cmd;
     }
 
+    public RequestMsg(Object data) {
+        this.data = data;
+    }
+
     public int getCmd() {
         return cmd;
     }

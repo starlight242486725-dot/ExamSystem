@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.net.Socket;
 
 public interface Client {
-    void create_menu() throws IOException, ClassNotFoundException;//创建菜单
+    void create_menu() throws IOException, ClassNotFoundException, InterruptedException;//创建菜单
     boolean login();//登录
     void sendMsg(RequestMsg requestMsg) throws IOException;//发送请求
     ResponseMsg receiveMsg() throws IOException, ClassNotFoundException;

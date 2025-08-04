@@ -1,12 +1,13 @@
 package com.sc.client.admin_client;
 
 import com.sc.client.Client;
-import com.sc.client.student_client.Student;
-import com.sc.client.teacher_client.Teacher;
+import com.sc.entity.Student;
+import com.sc.entity.Teacher;
 import com.sc.common.Constants;
 import com.sc.common.InputHandler;
 import com.sc.common.RequestMsg;
 import com.sc.common.ResponseMsg;
+import com.sc.entity.Admin;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -378,7 +379,7 @@ public class AdminClient implements Client, Runnable {
                 closeResources();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("连接失败"+e.getMessage());
             closeResources(); // 连接失败时也关闭资源
         }
     }

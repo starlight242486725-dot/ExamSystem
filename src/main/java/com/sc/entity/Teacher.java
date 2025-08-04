@@ -1,4 +1,4 @@
-package com.sc.client.teacher_client;
+package com.sc.entity;
 
 import java.io.Serializable;
 

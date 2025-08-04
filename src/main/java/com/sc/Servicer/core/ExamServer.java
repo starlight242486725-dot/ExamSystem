@@ -1,7 +1,7 @@
 package com.sc.Servicer.core;
 
-import com.sc.client.student_client.Student;
-import com.sc.client.teacher_client.Teacher;
+import com.sc.entity.Student;
+import com.sc.entity.Teacher;
 import com.sc.common.Constants;
 import com.sc.entity.ExamRecord;
 

@@ -1,13 +1,12 @@
 package com.sc.common;
 
-import java.io.File;
 
 /**
  * 常量定义，端口号，路径，消息类型
  */
 public class Constants{
-    public static final long EXAM_DURATION_MINUTES = 130;
-    public static final long REMINDER_MINUTES = 30;
+    public static final long EXAM_DURATION_MINUTES = 2;
+    public static final long REMINDER_MINUTES = 1;
 
 
 
@@ -21,8 +20,7 @@ public class Constants{
     public static String student_paper_path = root_path + "/Client/StuClient/papers";
     public static String answer_path = root_path+"/Client/StuClient/submit";
     public static String graded_paper_path = root_path+"/Server/gradedPaper";
-    public static String tea_client_stuAnswer = root_path+"/Client/TeaClient";
-
+    public static String TEACHER_DOWNLOAD_PATH = root_path+"/Client/TeaClient/download";
     //管理员唯一账号
     public static final String name = "admin";
     public static final String pass = "123456";
@@ -45,7 +43,7 @@ public class Constants{
     public static final int TEACHER_VIEW_PENDING_PAPERS = 302;
     public static final int TEACHER_GRADE_PAPER = 303;
     public static final int TEACHER_VIEW_GRADED_PAPERS = 304;
-    public static final int TEACHER_VIEW_PAPER = 305;
+    public static final int TEACHER_DOWNLOAD_PAPER = 305;
 
     public static final String ADMIN = "ADMIN";       // 管理员
     public static final String STUDENT = "STUDENT";   // 学生

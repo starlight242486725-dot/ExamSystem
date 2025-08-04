@@ -1,7 +1,5 @@
 package com.sc.entity;
 
-import com.sc.client.student_client.Student;
-
 import java.io.Serializable;
 
 /**
@@ -16,7 +14,7 @@ public class ExamRecord implements Serializable {
     private long beginTimeMillis; // 开始时间毫秒值
     private long submitTimeMillis;// 结束时间毫秒值
     private double score;// 分数
-
+    private boolean isGraded = false;
     public double getScore() {
         return score;
     }
@@ -85,6 +83,18 @@ public class ExamRecord implements Serializable {
                 ", submit_status=" + submit_status +
                 ", begin_time='" + begin_time + '\'' +
                 ", submit_time='" + submit_time + '\'' +
+                ", beginTimeMillis=" + beginTimeMillis +
+                ", submitTimeMillis=" + submitTimeMillis +
+                ", score=" + score +
+                ", isGraded=" + isGraded +
                 '}';
+    }
+
+    public boolean isGraded() {
+        return isGraded;
+    }
+
+    public void setGraded(boolean graded) {
+        isGraded = graded;
     }
 }
