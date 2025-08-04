@@ -5,12 +5,11 @@ import com.sc.common.Constants;
 import com.sc.common.InputHandler;
 import com.sc.common.RequestMsg;
 import com.sc.common.ResponseMsg;
+import com.sc.entity.Teacher;
 
 import java.io.*;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
-import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +25,6 @@ public class TeacherClient implements Client, Runnable {
     private Socket socket;
     private Teacher teacher;
     private Map<String, Object> data =null;
-    private Map<String,Object> gradedPaper = new HashMap<>();
 
     @Override
     public void create_menu() throws IOException, ClassNotFoundException {
@@ -54,7 +52,68 @@ public class TeacherClient implements Client, Runnable {
             }
         }
     }
+    /**
+     * 下载学生答卷到本地指定目录
+     * @param fileName 答卷文件名（从待批改列表中获取）
+     * @return 下载成功返回true，失败返回false
+     */
+    private boolean downloadStudentPaper(String fileName) {
+        try {
+            // 1. 发送下载请求：告知服务器需要下载的答卷文件名
+            sendMsg(new RequestMsg(Constants.TEACHER_DOWNLOAD_PAPER, fileName));
 
+            // 2. 接收服务器响应（包含答卷内容）
+            ResponseMsg responseMsg = receiveMsg();
+            if (responseMsg == null) {
+                System.out.println("服务器无响应，下载失败");
+                return false;
+            }
+
+            // 3. 处理响应结果
+            if (responseMsg.getCode() == 200) {
+                // 服务器返回的答卷内容（字符串格式）
+                String paperContent = (String) responseMsg.getData();
+                if (paperContent == null || paperContent.trim().isEmpty()) {
+                    System.out.println("下载的答卷内容为空");
+                    return false;
+                }
+
+                // 4. 确保本地目录存在（如不存在则创建）
+                File saveDir = new File(Constants.TEACHER_DOWNLOAD_PATH); // 需在Constants中定义目录
+                if (!saveDir.exists()) {
+                    boolean isDirCreated = saveDir.mkdirs(); // 递归创建目录
+                    if (!isDirCreated) {
+                        System.out.println("创建本地保存目录失败：" + saveDir.getAbsolutePath());
+                        return false;
+                    }
+                }
+
+                // 5. 保存答卷到本地文件
+                File saveFile = new File(saveDir, fileName);
+                try (FileWriter writer = new FileWriter(saveFile);
+                     BufferedWriter bw = new BufferedWriter(writer)) {
+                    bw.write(paperContent); // 写入答卷内容
+                    bw.flush(); // 强制刷新缓冲区
+                }
+
+                System.out.println("答卷已下载至：" + saveFile.getAbsolutePath());
+                return true;
+            } else {
+                System.out.println("下载失败：" + responseMsg.getMessage());
+                return false;
+            }
+
+        } catch (SocketTimeoutException e) {
+            System.out.println("下载超时，请检查网络连接");
+            return false;
+        } catch (IOException e) {
+            System.out.println("下载时发生IO错误：" + e.getMessage());
+            return false;
+        } catch (ClassNotFoundException e) {
+            System.out.println("服务器响应格式错误：" + e.getMessage());
+            return false;
+        }
+    }
     private boolean viewPendingPapers() {
         try {
             // 发送请求
@@ -132,7 +191,7 @@ public class TeacherClient implements Client, Runnable {
 
     private void viewGradedPapers() throws IOException, ClassNotFoundException {// 查看已批改试卷的逻辑
         sendMsg(new RequestMsg(Constants.TEACHER_VIEW_GRADED_PAPERS, null));
-        sendMsg(teacher.getId_card());
+        sendMsg(new RequestMsg(teacher.getId_card()));
         // 接收服务器响应
         ResponseMsg responseMsg = receiveMsg();
         if (responseMsg != null) {
@@ -179,36 +238,60 @@ public class TeacherClient implements Client, Runnable {
     }
 
     private void gradeStudentPapers() throws IOException, ClassNotFoundException {
-        // 查看待批改试卷的逻辑
-        if (viewPendingPapers()) {//内部已经校验了data的内容
+        if (viewPendingPapers()) {
             int num = handler.getIntInput("请输入待批改试卷序号：");
             while (true) {
                 if (num <= 0 || num > (int) data.get("待批改试卷数量")) {
                     System.out.println("输入序号有误");
                     num = handler.getIntInput("请重新输入待批改试卷序号：");
-                }else {
+                } else {
                     break;
                 }
             }
+
             List<Map<String, String>> papers = (List<Map<String, String>>) data.get("试卷列表");
             Map<String, String> paper = papers.get(num - 1);
             System.out.println("选中的试卷: " + paper);
-            //批改的试卷
             String fileName = paper.get("文件名");
 
-            //分数
+            // 下载答卷
+            System.out.println("正在下载学生答卷...");
+            if (!downloadStudentPaper(fileName)) {
+                System.out.println("无法继续批改，返回菜单");
+                return;
+            }
+
+            // 新增：显示考试时长，供教师判断是否超时
+            String examDuration = paper.getOrDefault("考试时长", "未知");
+            System.out.println("考试时长: " + examDuration);
+            String isTimeout = handler.getNonEmptyStringInput("该试卷是否超时? (y/n):");
+
+            // 输入分数
             double score = handler.getDoubleInput("请输入分数：");
-            //批改时间
+            while (score < 0 || score > 100) {
+                System.out.println("分数必须在0-100之间");
+                score = handler.getDoubleInput("请重新输入分数：");
+            }
+
+            // 可选项：如果超时且给0分，添加备注
+            String remark = "";
+            if ("y".equalsIgnoreCase(isTimeout) && score == 0) {
+                remark = "（超时未完成）";
+            }
+
+            // 提交批改结果
             String time = new Date(System.currentTimeMillis()).toString();
             Map<String, Object> gradedPaper = new HashMap<>();
             gradedPaper.put("文件名", fileName);
             gradedPaper.put("分数", score);
             gradedPaper.put("批改教师", teacher);
             gradedPaper.put("批改时间", time);
+            gradedPaper.put("备注", remark);  // 可选：传递超时备注
+
             oos.reset();
-            oos.writeObject(new RequestMsg(Constants.TEACHER_GRADE_PAPER,gradedPaper));
+            oos.writeObject(new RequestMsg(Constants.TEACHER_GRADE_PAPER, gradedPaper));
             oos.flush();
-            // 接收服务器响应
+            // 处理服务器响应
             ResponseMsg responseMsg = receiveMsg();
             if (responseMsg != null) {
                 if (responseMsg.getCode() == 200) {
@@ -220,8 +303,6 @@ public class TeacherClient implements Client, Runnable {
                 System.out.println("服务器无响应");
             }
         }
-
-
     }
 
     @Override
